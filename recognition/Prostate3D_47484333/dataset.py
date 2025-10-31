@@ -44,3 +44,21 @@ def normalize_volume(volume):
         # Simple formula: (value - minimum) / (maximum - minimum)
         volume = (volume - min_val) / (max_val - min_val)
     return volume
+
+def resample_volume(volume, target_size):
+    """Resamples the volume to the target size using scipy.ndimage.zoom."""
+    current_size = volume.shape
+    zoom_factors = [target_size[i] / current_size[i] for i in range(3)]
+
+    # Check if the volume contains only integers (a proxy for a mask/label volume)
+    # We use volume.max() > 1.0 to distinguish normalized image floats (0-1) from integer labels
+    is_mask = np.issubdtype(volume.dtype, np.integer) or volume.max() > 1.0
+
+    # Use nearest neighbor interpolation (order=0) for masks to preserve discrete labels
+    if is_mask:
+        resampled = zoom(volume, zoom_factors, order=0)
+    # Use cubic interpolation (order=3) for image data
+    else:
+        resampled = zoom(volume, zoom_factors, order=3)
+
+    return resampled
