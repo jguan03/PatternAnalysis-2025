@@ -66,5 +66,16 @@ class UNet3D(nn.Module):
         # low resolution information. 
         self.bottleneck = ConvBlock3D(base_channels * 4, base_channels * 8)
 
+        #Decoder (Expanding path)
+ 
+        self.up3 = nn.ConvTranspose3d(base_channels * 8, base_channels * 4, kernel_size=2, stride=2)
+        self.conv3 = ConvBlock3D(base_channels * 8, base_channels * 4) # Input is concatenation of up3 + down3
 
+        self.up2 = nn.ConvTranspose3d(base_channels * 4, base_channels * 2, kernel_size=2, stride=2)
+        self.conv2 = ConvBlock3D(base_channels * 4, base_channels * 2) # Input is concatenation of up2 + down2
 
+        self.up1 = nn.ConvTranspose3d(base_channels * 2, base_channels, kernel_size=2, stride=2)
+        self.conv1 = ConvBlock3D(base_channels * 2, base_channels) # Input is concatenation of up1 + down1
+
+        # Output
+        self.final_conv = nn.Conv3d(base_channels, out_classes, kernel_size=1)
