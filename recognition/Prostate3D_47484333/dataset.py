@@ -62,3 +62,25 @@ def resample_volume(volume, target_size):
         resampled = zoom(volume, zoom_factors, order=3)
 
     return resampled
+
+def augment_volume(image_data, label_data):
+    """
+    Applies random data augmentation (flips) to both image and label volumes.
+    """
+    # Random Z-axis (Depth) flip
+    if random.random() < 0.5:
+        image_data = np.flip(image_data, axis=0).copy()
+        label_data = np.flip(label_data, axis=0).copy()
+
+    # Random Y-axis (Height) flip
+    if random.random() < 0.5:
+        image_data = np.flip(image_data, axis=1).copy()
+        label_data = np.flip(label_data, axis=1).copy()
+
+    # Random X-axis (Width) flip
+    if random.random() < 0.5:
+        image_data = np.flip(image_data, axis=2).copy()
+        label_data = np.flip(label_data, axis=2).copy()
+
+    return image_data, label_data
+
