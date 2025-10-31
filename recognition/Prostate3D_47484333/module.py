@@ -67,15 +67,59 @@ class UNet3D(nn.Module):
         self.bottleneck = ConvBlock3D(base_channels * 4, base_channels * 8)
 
         #Decoder (Expanding path)
- 
+
+
+        # Level 3: Upsample from the Bottleneck. 
+        # First upsampling step: from bottleneck to level 3. 
+        # ConvTranspose3d doubles the spatial dimensions (D, H, W) and halves the channels.
         self.up3 = nn.ConvTranspose3d(base_channels * 8, base_channels * 4, kernel_size=2, stride=2)
         self.conv3 = ConvBlock3D(base_channels * 8, base_channels * 4) # Input is concatenation of up3 + down3
 
+        # Level 2: Second upsampling step
         self.up2 = nn.ConvTranspose3d(base_channels * 4, base_channels * 2, kernel_size=2, stride=2)
         self.conv2 = ConvBlock3D(base_channels * 4, base_channels * 2) # Input is concatenation of up2 + down2
 
+        # Level 1: Final upsampling to near-original input size
         self.up1 = nn.ConvTranspose3d(base_channels * 2, base_channels, kernel_size=2, stride=2)
         self.conv1 = ConvBlock3D(base_channels * 2, base_channels) # Input is concatenation of up1 + down1
 
-        # Output
+        # Final 1x1x1 convolution maps the final feature depth (base_channels) 
+        # to the required number of output segmentation classes.
         self.final_conv = nn.Conv3d(base_channels, out_classes, kernel_size=1)
+
+
+    def forward(self, x):
+
+        # Encoder
+        x1 = self.down1(x) # -> skip connection 1
+        x = self.pool1(x1)
+
+        x2 = self.down2(x) # -> skip connection 2
+        x = self.pool2(x2)
+
+        x3 = self.down3(x) # -> skip connection 3
+        x = self.pool3(x3)
+
+        # Bottleneck
+        x = self.bottleneck(x)
+
+        # Decoder
+        x = self.up3(x)
+        # Pad if necessary to match skip connection size (common in 3D UNets)
+        x3 = F.interpolate(x3, size=x.shape[2:], mode='nearest')
+        x = torch.cat([x, x3], dim=1)
+        x = self.conv3(x)
+
+        x = self.up2(x)
+        x2 = F.interpolate(x2, size=x.shape[2:], mode='nearest')
+        x = torch.cat([x, x2], dim=1)
+        x = self.conv2(x)
+
+        x = self.up1(x)
+        x1 = F.interpolate(x1, size=x.shape[2:], mode='nearest')
+        x = torch.cat([x, x1], dim=1)
+        x = self.conv1(x)
+
+        # Output
+        logits = self.final_conv(x)
+        return logits
