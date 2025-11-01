@@ -90,6 +90,69 @@ class WeightedDiceLoss3D(nn.Module):
 
         # Return the average loss across all classes and items in the batch. 
         return weighted_loss.mean()
+
+def run_epoch(model, data_loader, optimizer, is_training=True, loss_fn=None):
+
+    # training uses model.train()
+    # validation uses model.eval()
+    model.train() if is_training else model.eval()
+
+    total_loss = 0.0
+    all_dice_scores = []
+
+    # Create progress bar to track the amount of time it takes to finish one epoch of training. 
+    progress_bar = tqdm(data_loader, desc=f"Epoch {'Train' if is_training else 'Valid'}", leave=False)
+
+    for images, masks_gt in progress_bar:
+        # Move the data to the GPU (if available). 
+        images, masks_gt = images.to(DEVICE), masks_gt.to(DEVICE)
+
+        if is_training:
+            # Zero the gradients before the forward pass. 
+            optimizer.zero_grad()
+
+        # Pass the images through the UNet to get logits. 
+        output_logits = model(images)
+
+        # Calculate loss and add it to the total loss. 
+        loss = loss_fn(output_logits, masks_gt)
+        total_loss += loss.item()
+
+        # Backpropagation and optimisation during training. 
+        if is_training:
+            loss.backward()
+            if optimizer:
+                optimizer.step()
+
+        # Check the current performance of the training during the training process. 
+        with torch.no_grad():
+
+            # Retrieve dice score from every class in the batch. 
+            dice = dice_score_3d(output_logits, masks_gt, smooth=1e-6)
+            current_prostate_dice = dice[PROSTATE_LABEL_IDX] 
+
+            # If validating, collect all class Dice scores. 
+            if not is_training:
+                all_dice_scores.append(dice)
+
+        # Update progress to display current metrics. 
+        progress_bar.set_postfix(
+            Loss=f'{loss.item():.4f}',
+            ProstateDice=f'{current_prostate_dice:.4f}'
+        )
+
+    # Calculate average loss for the epoch. 
+    avg_loss = total_loss / len(data_loader)
+
+    # Calculate mean Dice scores across all validation batches. 
+    avg_dice = None
+    if not is_training and all_dice_scores:
+        
+        # Average the collected scores over the entire validation set. 
+        avg_dice = np.mean(all_dice_scores, axis=0)
+
+    
+    return avg_loss, avg_dice
     
 def train_unet_3d(model, train_loader, val_loader, epochs=50):
     return False
