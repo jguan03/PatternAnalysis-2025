@@ -42,3 +42,29 @@ def load_model(model_path):
 
     model.eval()
     return model
+
+def calculate_all_dice_scores(model, data_loader):
+
+    all_scores = []
+    print("\n--- Calculating Dice Scores Across Entire Test Set ---")
+    model.eval()
+    with torch.no_grad():
+        for i, (image_volume, mask_gt_volume) in enumerate(data_loader):
+            # Move the volume to the device. 
+            image_input = image_volume.to(DEVICE)
+
+            # Inference. 
+            output_logits = model(image_input) # (1, C, D, H, W)
+
+            # Convert C-channel output to 1-channel class map. 
+            mask_pred_volume = torch.argmax(output_logits.squeeze(0), dim=0).unsqueeze(0) # (1, D, H, W)
+
+            # Calculate Dice scores using the function imported from train.py. 
+            dice_scores = dice_score_3d(mask_pred_volume, mask_gt_volume.to(DEVICE), smooth=1e-6)
+
+            # Store results as a NumPy array
+            all_scores.append(np.array(dice_scores))
+
+    print(f"Calculation complete. Processed {len(all_scores)} volumes.")
+    return np.array(all_scores) # Shape (num_volumes, NUM_CLASSES)
+
