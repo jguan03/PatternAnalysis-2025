@@ -100,3 +100,41 @@ def plot_dice_score_distribution(all_scores):
 
     plt.show() 
     plt.close(fig) 
+
+def plot_mean_dice_scores(all_scores):
+    
+    print("\n--- Plotting Mean Dice Score per Class ---")
+
+    # Calculate the average score for each organ. 
+    mean_scores = np.mean(all_scores, axis=0)
+
+    # Create the figure
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    # Bar plot, excluding the background. 
+    classes_to_plot = np.arange(1, NUM_CLASSES)
+    mean_scores_to_plot = mean_scores[classes_to_plot]
+    class_labels_to_plot = CLASS_LABELS[1:]
+
+    # Plot the results using distinct colors for visualisation 
+    # purposes. 
+    bars = ax.bar(class_labels_to_plot, mean_scores_to_plot, color=['teal', 'gray', 'orange', 'purple', 'red'])
+
+    # Add labels and title
+    ax.set_title('Mean Dice Score per Organ (Excluding Background)', fontsize=16)
+    ax.set_ylabel('Mean Dice Score', fontsize=12)
+    
+    # Dice scores must be between 0 and 1.
+    ax.set_ylim(0, 1.0)
+
+    # Label each bar with its exact value.
+    for bar in bars:
+        yval = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width()/2, yval + 0.02, round(yval, 4), ha='center', va='bottom', fontsize=10)
+
+    plt.xticks(rotation=15, ha="right")
+    ax.grid(axis='y', linestyle='--')
+
+    plt.show()
+    plt.close(fig)
+    print("Mean Dice score bar chart complete.")
