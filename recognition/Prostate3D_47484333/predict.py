@@ -224,3 +224,39 @@ def plot_mean_dice_scores(all_scores):
     plt.show()
     plt.close(fig)
     print("Mean Dice score bar chart complete.")
+
+def main():
+    # Load the Test Data Loader.
+    try:
+        # Load the test dataset. 
+        test_dataset = NIFTI3DSegmentationDataset(split='test')
+        
+        # Ensures deterministic score calculation across the full test set.
+        test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=0)
+        
+    except RuntimeError as e:
+        
+        print(f"\n[FATAL] Data Setup Failed: {e}")
+        return
+
+    # Load the trained model.
+    model = load_model(MODEL_PATH)
+
+    # Only run analysis if the weights exist and the test set is not empty.
+    if os.path.exists(MODEL_PATH) and len(test_loader.dataset) > 0:
+
+        # Qualitative Visualisation - images
+        visualize_inference_slice(model, test_loader, num_samples=3)
+
+        # Qualitative Visualisation - graphs
+        # Calculate scores for all volumes first.
+        all_scores = calculate_all_dice_scores(model, test_loader)
+        
+        # Plot the score distribution for the prostate.
+        plot_dice_score_distribution(all_scores)
+        
+        # Plot the mean score for all organs.
+        plot_mean_dice_scores(all_scores)
+
+if __name__ == '__main__':
+    main()
