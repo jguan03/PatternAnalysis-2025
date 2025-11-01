@@ -8,12 +8,16 @@ import numpy as np
 import os
 import random
 
+import matplotlib.pyplot as plt
+import matplotlib.image as mpimg 
+
 # Import 3D components
 from module import UNet3D
 from dataset import NIFTI3DSegmentationDataset, BATCH_SIZE, NUM_CLASSES, DEVICE, LR
 
 # Define the file path for the best model weights.
 MODEL_PATH = 'best_unet3d_model.pth'
+PLOT_PATH = 'training_history.png' 
 
 # Define the prostate label index globally.
 PROSTATE_LABEL_IDX = 5
@@ -51,6 +55,41 @@ def dice_score_3d(prediction, target, smooth=1e-6):
 
     # Return a list of dice scores. 
     return dice_scores 
+
+class WeightedDiceLoss3D(nn.Module):
+    
+    def __init__(self, num_classes, weights):
+        super(WeightedDiceLoss3D, self).__init__()
+        self.num_classes = num_classes
+        self.weights = weights # Tensor of size (C,)
+
+    def forward(self, prediction, target, smooth=1e-6):
+        # Convert raw output logits into probabilities using Softmax. 
+        probs = F.softmax(prediction, dim=1)
+
+        # Convert the ground truth mask into a one-hot vector format for comparison
+        # using one-hot encoding. 
+        target_one_hot = F.one_hot(target, num_classes=self.num_classes).permute(0, 4, 1, 2, 3).float()
+
+        # Reshape the data to combine the D, H, and W dimensions into a single voxel dimension. 
+        probs_flat = probs.contiguous().view(probs.shape[0], self.num_classes, -1)
+        target_flat = target_one_hot.contiguous().view(target_one_hot.shape[0], self.num_classes, -1)
+
+         # Calculate the intersection and the total sum of volumes per class per batch item.
+        intersection = (probs_flat * target_flat).sum(dim=2) 
+        sets_sum = probs_flat.sum(dim=2) + target_flat.sum(dim=2) 
+
+        # Compute the dice score. 
+        dice = (2. * intersection + smooth) / (sets_sum + smooth)
+
+        # Compute the dice loss. 
+        class_losses = 1.0 - dice 
+
+        # Apply the pre-defined weights. 
+        weighted_loss = class_losses * self.weights
+
+        # Return the average loss across all classes and items in the batch. 
+        return weighted_loss.mean()
     
 def train_unet_3d(model, train_loader, val_loader, epochs=50):
     return False
