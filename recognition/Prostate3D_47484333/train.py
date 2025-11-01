@@ -61,7 +61,7 @@ class WeightedDiceLoss3D(nn.Module):
     def __init__(self, num_classes, weights):
         super(WeightedDiceLoss3D, self).__init__()
         self.num_classes = num_classes
-        self.weights = weights # Tensor of size (C,)
+        self.weights = weights 
 
     def forward(self, prediction, target, smooth=1e-6):
         # Convert raw output logits into probabilities using Softmax. 
@@ -188,7 +188,42 @@ def plot_training_history(train_losses, val_losses, prostate_dice, mean_dice, sa
 
     
 def train_unet_3d(model, train_loader, val_loader, epochs=50):
-    return False
+
+    class_weights = torch.tensor([
+        0.5,    # 0 - Background 
+        1.0,    # 1 - Body
+        3.0,    # 2 - Bone
+        7.0,    # 3 - Bladder
+        7.0,    # 4 - Rectum
+        10.0    # 5 - Prostate 
+    ], dtype=torch.float32).to(DEVICE)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=LR)
+    
+    # Use the new weighted dice loss with the calculated weights. 
+    loss_fn = WeightedDiceLoss3D(num_classes=NUM_CLASSES, weights=class_weights)
+
+    # Add a learning rate scheduler.
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode='min',         
+        factor=0.5,         
+        patience=5,        
+        min_lr=1e-6        
+    )
+
+    TARGET_DICE = 0.70
+
+    best_prostate_dice = -1.0
+
+    # History tracking lists
+    train_losses = []
+    val_losses = []
+    prostate_dice_scores = []
+    mean_dice_scores = []
+
+    print("\nStarting 3D UNet Training...")
+    
 
 def main():
     
