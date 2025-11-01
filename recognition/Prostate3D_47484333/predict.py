@@ -43,6 +43,92 @@ def load_model(model_path):
     model.eval()
     return model
 
+def visualize_inference_slice(model, data_loader, num_samples=3):
+    
+    print(f"\n--- Visualizing {num_samples} Central Slices from Test Volumes ---")
+
+    # Set up subplots dynamically. 
+    if num_samples <= 0:
+        print("No samples requested for visualization.")
+        return
+
+    fig, axes = plt.subplots(num_samples, 3, figsize=(15, num_samples * 5))
+    if num_samples == 1:
+        # Ensure axes is a 2D array even for a single sample for consistent indexing. 
+        axes = np.array([axes])
+
+    dataset_size = len(data_loader.dataset)
+    if dataset_size == 0:
+        print("Dataset is empty. Cannot visualize.")
+        plt.close(fig) 
+        return
+
+    # Pick random volumes from the dataset.
+    random_indices = random.sample(range(dataset_size), min(num_samples, dataset_size))
+    sample_data = [data_loader.dataset[i] for i in random_indices]
+
+    # Set up a discrete color map for the segmentation classes.
+    base_cmap = plt.colormaps.get_cmap('jet')
+    cmap = ListedColormap(base_cmap(np.linspace(0, 1, NUM_CLASSES)))
+
+    with torch.no_grad():
+        im = None 
+        for i, (image_volume, mask_gt_volume) in enumerate(sample_data):
+
+            # Add batch dimension and move to device.
+            image_input = image_volume.unsqueeze(0).to(DEVICE)
+
+            # Inference. 
+            output_logits = model(image_input)
+
+            # Argmax for class prediction and convert to numpy.
+            mask_pred_volume = torch.argmax(output_logits.squeeze(0), dim=0).cpu().numpy()
+
+            # Extract central slice (D/2) for plotting. 
+            D = TARGET_VOLUME_SIZE[0]
+            slice_idx = D // 2
+
+            image_slice = image_volume.squeeze().cpu().numpy()[slice_idx, :, :]
+            mask_gt_slice = mask_gt_volume.cpu().numpy()[slice_idx, :, :]
+            mask_pred_slice = mask_pred_volume[slice_idx, :, :]
+
+            # Plot 1: Original Image. 
+            if image_slice.max() > image_slice.min():
+                norm_image_slice = (image_slice - image_slice.min()) / (image_slice.max() - image_slice.min())
+            else:
+                norm_image_slice = image_slice * 0 
+
+            axes[i, 0].imshow(norm_image_slice, cmap='gray')
+            axes[i, 0].set_title(f'Original Slice (D={slice_idx})')
+            axes[i, 0].axis('off')
+
+            # Plot 2: Ground Truth Mask.
+            axes[i, 1].imshow(mask_gt_slice, cmap=cmap, vmin=0, vmax=NUM_CLASSES - 1)
+            axes[i, 1].set_title('Ground Truth Mask')
+            axes[i, 1].axis('off')
+
+            # Plot 3: Predicted Mask.
+            im = axes[i, 2].imshow(mask_pred_slice, cmap=cmap, vmin=0, vmax=NUM_CLASSES - 1)
+            axes[i, 2].set_title('Predicted Mask')
+            axes[i, 2].axis('off')
+
+            # Print Dice Score for this specific volume below the prediction.
+            dice_scores = dice_score_3d(torch.from_numpy(mask_pred_volume).to(DEVICE).unsqueeze(0),
+                                         mask_gt_volume.to(DEVICE).unsqueeze(0), smooth=1e-6)
+            prostate_dice = dice_scores[5]
+            axes[i, 2].set_xlabel(f"Volume Prostate Dice: {prostate_dice:.4f}", fontsize=12)
+
+        # Add a single color bar with custom labels to the figure.
+        if im is not None:
+            cbar = fig.colorbar(im, ax=axes[:, 2].tolist(), ticks=np.arange(NUM_CLASSES), fraction=0.03, pad=0.04)
+            cbar.ax.set_yticklabels(CLASS_LABELS)
+
+        # Tidy up the plot layout.
+        fig.subplots_adjust(right=0.85, wspace=0.1)
+
+    plt.show()
+    print("3D Inference visualization complete.")
+
 def calculate_all_dice_scores(model, data_loader):
 
     all_scores = []
