@@ -223,6 +223,55 @@ def train_unet_3d(model, train_loader, val_loader, epochs=50):
     mean_dice_scores = []
 
     print("\nStarting 3D UNet Training...")
+    # Main training loop iterating over the specified number of epochs. 
+    # In this case, the number of epochs specified is 50. 
+    for epoch in range(1, epochs + 1):
+        
+        # Perform forward pass, loss calculation, backpropagation, and weight update when 
+        # training one epoch. 
+        train_loss, _ = run_epoch(model, train_loader, optimizer, is_training=True, loss_fn=loss_fn)
+
+        # Evaluates performance on unseen data without updating weights.
+        with torch.no_grad():
+            val_loss, val_dice_scores = run_epoch(model, val_loader, None, is_training=False, loss_fn=loss_fn)
+
+        # Retrieve the current prostate dice score at index 5. 
+        current_prostate_dice = val_dice_scores[PROSTATE_LABEL_IDX]
+
+        # Check if the current model is the best performing by analysing the 
+        # previous prostate dice score. 
+        is_new_best = current_prostate_dice > best_prostate_dice
+        if is_new_best:
+            best_prostate_dice = current_prostate_dice
+            # Save weights if validation improves. 
+            torch.save(model.state_dict(), MODEL_PATH)
+
+        # Set up scheduler to reduce learning rate when loss plateaus. 
+        scheduler.step(val_loss)
+
+        # Store history for later plotting and analysis
+        train_losses.append(train_loss)
+        val_losses.append(val_loss)
+        prostate_dice_scores.append(current_prostate_dice)
+        mean_dice_scores.append(np.mean(val_dice_scores))
+
+        # Print metrics during epoch training. 
+        print(f"\n--- Epoch {epoch:02d}/{epochs} ---")
+        print(f"| Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} | Best Prostate Dice: {best_prostate_dice:.4f}")
+        print(f"| Val Dice (Mean): {np.mean(val_dice_scores):.4f} | Prostate Dice: {current_prostate_dice:.4f}")
+        print("-" * 50)
+
+        # Stop check if the target performance is reached early.
+        if best_prostate_dice >= TARGET_DICE:
+            print(f"\nTarget achieved! Prostate Dice of {best_prostate_dice:.4f} reached. Stopping training.")
+            # Plot before stopping.
+            plot_training_history(train_losses, val_losses, prostate_dice_scores, mean_dice_scores, PLOT_PATH)
+            return True 
+
+    # Plot history after all epochs are completed.
+    plot_training_history(train_losses, val_losses, prostate_dice_scores, mean_dice_scores, PLOT_PATH)
+
+    return False # Did not achieve target
     
 
 def main():
