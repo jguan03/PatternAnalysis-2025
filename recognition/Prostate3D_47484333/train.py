@@ -304,5 +304,35 @@ def main():
     train_unet_3d(model, train_loader, val_loader)
     print("\nTraining complete.")
 
+    # Final Test Set Evaluation
+    print("\n--- Final Test Set Evaluation ---")
+
+    # Check if the saved best model file exists before proceeding.
+    if os.path.exists(MODEL_PATH):
+        print("Loaded best model weights for final testing.")
+        
+        # Load the model state dictionary from the best epoch. 
+        model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
+    
+        # Create a tensor of ones to represent equal weights for all classes. 
+        unweighted_dice_loss_fn = WeightedDiceLoss3D(num_classes=NUM_CLASSES, weights=torch.ones(NUM_CLASSES).to(DEVICE))
+        
+        # Run a single evaluation epoch on the test data. 
+        test_loss, test_dice_scores = run_epoch(model, test_loader, None, is_training=False, loss_fn=unweighted_dice_loss_fn)
+    
+        # Extract the Dice score for the prostate using its index. 
+        final_prostate_dice = test_dice_scores[PROSTATE_LABEL_IDX]
+    
+        print(f"Test Loss: {test_loss:.4f}")
+        
+        # Show final performance metric for the prostate gland. 
+        print(f"Test Set Prostate Dice: **{final_prostate_dice:.4f}**")
+        
+    else:
+        # Handle when models are not saved. 
+        print("Cannot run final test: Best model weights not saved.")
+
+    
+
 if __name__ == '__main__':
     main()
