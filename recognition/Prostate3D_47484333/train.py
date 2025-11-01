@@ -332,7 +332,25 @@ def main():
         # Handle when models are not saved. 
         print("Cannot run final test: Best model weights not saved.")
 
-    
+    # Displays the training history plot 
+    print("\nAttempting to display training history plot...")
+    if os.path.exists(PLOT_PATH):
+        try:
+            # Load the image data
+            img = mpimg.imread(PLOT_PATH)
+
+            # Create a figure to display the image
+            plt.figure(figsize=(10, 6))
+            plt.title("Training History Plot")
+
+            # Display the image
+            plt.imshow(img)
+            plt.axis('off') 
+            plt.show()
+        except Exception as e:
+            print(f"Could not display plot: {e}")
+    else:
+        print(f"Error: The image file '{PLOT_PATH}' was not found. Please ensure 'train.py' ran successfully.")
 
 if __name__ == '__main__':
     main()
