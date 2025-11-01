@@ -86,6 +86,7 @@ def augment_volume(image_data, label_data):
 
 # dataset.py - Continuing the NIFTI3DSegmentationDataset class definition
 class NIFTI3DSegmentationDataset(Dataset):
+    
     def __init__(self, split='train'):
         # This line keeps track of what data type we are storing: 
         # (train, validate, and test). 
@@ -160,6 +161,62 @@ class NIFTI3DSegmentationDataset(Dataset):
     def __len__(self):
         # Function returns the number of patient IDs. 
         return len(self.patient_ids)
+
+    def __getitem__(self, idx):
+
+        # Retrieve unique patient ID for this item (volume)
+        # in the list of patient IDs. 
+        patient_id = self.patient_ids[idx]
+        
+        # Use the previously obtained patient ID to build the 
+        # suffixes for the file names. 
+        image_filename = f"{patient_id}_{IMAGE_SUFFIX}.nii.gz"
+        label_filename = f"{patient_id}_{LABEL_SUFFIX}.nii.gz"
+
+        # Complete building the full image path by joining. 
+        image_path = os.path.join(IMAGE_DIR, image_filename)
+        label_path = os.path.join(LABEL_DIR, label_filename)
+        
+        # Use nibabel to load the NIfTI files for both the 
+        # images and labels. 
+        image_nii = nib.load(image_path)
+        label_nii = nib.load(label_path)
+
+        # Extract numerical data from the NIfTI objects. 
+        image_data = image_nii.get_fdata().astype(np.float32)
+        label_data = label_nii.get_fdata().astype(np.uint8)
+        
+        # Ensure image data has 3 dimensions (Depth, Height, Width)
+        # If the image data contains 4, remove it. 
+        if image_data.ndim == 4:
+            image_data = image_data.squeeze()
+        
+        # Normalise the image data by applying the 0-1 scaling function. 
+        # This is done to standardise the brightness and contrast of the 
+        # image data. 
+        image_data = normalize_volume(image_data)
+        
+        # Resize the labels and images to match the target volume size. 
+        image_resampled = resample_volume(image_data, TARGET_VOLUME_SIZE)
+        label_resampled = resample_volume(label_data, TARGET_VOLUME_SIZE)
+        
+        # Apply data augmentation (flipping) to the training data set. 
+        if self.split == 'train':
+             image_resampled, label_resampled = augment_volume(image_resampled, label_resampled)
+        
+        # Convert image array to PyTorch tensor. Add a channel dimension (C=1).
+        image_tensor = torch.from_numpy(image_resampled[np.newaxis, ...].copy()).float()
+        
+        # Labels should remain (D, H, W) for loss function/argmax. 
+        label_tensor = torch.from_numpy(label_resampled.copy()).long()
+
+        # Check if the tensor size is correct (matches the target volume size). 
+        if image_tensor.shape[1:] != TARGET_VOLUME_SIZE:
+             print(f"Error: Final image shape {image_tensor.shape[1:]} does not match target {TARGET_VOLUME_SIZE}")
+
+        # Return the processed image and its corresponding label mask. 
+        return image_tensor, label_tensor
+
 
             
 
