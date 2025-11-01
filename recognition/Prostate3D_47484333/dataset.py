@@ -84,3 +84,83 @@ def augment_volume(image_data, label_data):
 
     return image_data, label_data
 
+# dataset.py - Continuing the NIFTI3DSegmentationDataset class definition
+class NIFTI3DSegmentationDataset(Dataset):
+    def __init__(self, split='train'):
+        # This line keeps track of what data type we are storing: 
+        # (train, validate, and test). 
+        self.split = split 
+
+        # Check if the folder paths exist before attempting to load data. 
+        if not os.path.exists(IMAGE_DIR) or not os.path.exists(LABEL_DIR):
+            raise RuntimeError(
+                f"3D data not found. Please run prepare_3d_data.sh. "
+                f"Missing {IMAGE_DIR} or {LABEL_DIR}"
+            )
+
+        # Retrieve a list with all of image files in the 
+        # directory. 
+        all_files = sorted(os.listdir(IMAGE_DIR))
+
+        # Extract the base ID from the image name. 
+        all_base_ids = []
+        for f in all_files:
+            if f.endswith('.nii.gz'):
+                
+                # Remove the file extension. 
+                base_id_with_suffix = f.replace('.nii.gz', '')
+                
+                # Check for and strip the expected image suffix (_LFOV)
+                if base_id_with_suffix.endswith(f'_{IMAGE_SUFFIX}'):
+                    base_id = base_id_with_suffix[:-len(f'_{IMAGE_SUFFIX}')]
+                else:
+                    base_id = base_id_with_suffix
+
+                # Construct the expected file name for the label mask. 
+                label_filename = f"{base_id}_{LABEL_SUFFIX}.nii.gz"
+                label_path = os.path.join(LABEL_DIR, label_filename)
+
+                # Only add the base ID if both the image and the label file exist
+                if os.path.exists(label_path):
+                    all_base_ids.append(base_id)
+                else:
+                    print(f"Warning: Skipping {f}. Corresponding label {label_filename} not found.")
+
+        # Setting the random seed to a 
+        # fixed number makes it produce the 
+        # same randomised order of patient IDs. 
+        random.seed(42)
+        
+        # Shuffle the list of patient IDs in that 
+        # consistent, randomised order.  
+        random.shuffle(all_base_ids) 
+
+        # Defining the boundaries of splitting. 
+        total_patients = len(all_base_ids)
+        train_end = int(total_patients * 0.8)
+        val_end = int(total_patients * 0.9)
+
+        # Train dataset takes up the first 80% of the 
+        # list. 
+        if split == 'train':
+            self.patient_ids = all_base_ids[:train_end]
+            
+        # Train validate takes up the next 10% of the 
+        # list. 
+        elif split == 'validate':
+            self.patient_ids = all_base_ids[train_end:val_end]
+            
+        # Train test takes up the next 10% of the 
+        # list.
+        elif split == 'test':
+            self.patient_ids = all_base_ids[val_end:]
+        else:
+            raise ValueError("Split must be 'train', 'validate', or 'test'.")
+            
+    def __len__(self):
+        # Function returns the number of patient IDs. 
+        return len(self.patient_ids)
+
+            
+
+        
