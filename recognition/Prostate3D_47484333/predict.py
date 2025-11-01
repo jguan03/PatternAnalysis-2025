@@ -68,3 +68,35 @@ def calculate_all_dice_scores(model, data_loader):
     print(f"Calculation complete. Processed {len(all_scores)} volumes.")
     return np.array(all_scores) # Shape (num_volumes, NUM_CLASSES)
 
+def plot_dice_score_distribution(all_scores):
+    
+    # The Prostate class is index 5.
+    prostate_scores = all_scores[:, 5]
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    # Create the box plot.
+    ax.boxplot(prostate_scores, vert=True, patch_artist=True,
+                boxprops=dict(facecolor='lightblue', color='blue'),
+                medianprops=dict(color='red', linewidth=2),
+                flierprops=dict(marker='o', markerfacecolor='red', markersize=5))
+
+    # Set labels and title.
+    ax.set_title('Prostate Segmentation Dice Score Distribution (Test Set)', fontsize=16)
+    ax.set_ylabel('Dice Score (Prostate, Class 5)', fontsize=12)
+    ax.set_xticks([1])
+    ax.set_xticklabels(['Prostate'])
+    ax.set_ylim(0, 1.05) # Ensure y-axis is 0 to 1 for Dice scores
+
+    # Add mean and median text.
+    mean_score = np.mean(prostate_scores)
+    median_score = np.median(prostate_scores)
+
+    # Text annotation for summary statistics.
+    ax.text(1.15, mean_score, f'Mean: {mean_score:.4f}', color='darkgreen', va='center', fontsize=10, weight='bold')
+    ax.text(1.15, median_score, f'Median: {median_score:.4f}', color='red', va='center', fontsize=10, weight='bold')
+
+    ax.grid(axis='y', linestyle='--')
+
+    plt.show() 
+    plt.close(fig) 
