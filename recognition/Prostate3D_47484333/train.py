@@ -153,6 +153,39 @@ def run_epoch(model, data_loader, optimizer, is_training=True, loss_fn=None):
 
     
     return avg_loss, avg_dice
+
+def plot_training_history(train_losses, val_losses, prostate_dice, mean_dice, save_path):
+    """Generates and saves a two-panel plot of training history."""
+    epochs = range(1, len(train_losses) + 1)
+
+    plt.style.use('ggplot')
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+
+    # Plot 1: Loss History
+    ax1.plot(epochs, train_losses, label='Train Loss', color='blue', marker='o', linestyle='--')
+    ax1.plot(epochs, val_losses, label='Validation Loss', color='red', marker='o')
+    ax1.set_title('Loss History Over Epochs')
+    ax1.set_xlabel('Epoch')
+    ax1.set_ylabel('Weighted Dice Loss')
+    ax1.legend()
+    ax1.grid(True, linestyle=':', alpha=0.7)
+
+    # Plot 2: Dice Score History
+    ax2.plot(epochs, prostate_dice, label='Prostate Dice (Index 5)', color='green', marker='s')
+    ax2.plot(epochs, mean_dice, label='Mean Dice (All Classes)', color='purple', marker='^', linestyle='--')
+    ax2.axhline(0.70, color='gray', linestyle='-.', label='Target Dice (0.70)')
+    ax2.set_title('Dice Score History Over Epochs')
+    ax2.set_xlabel('Epoch')
+    ax2.set_ylabel('Dice Score')
+    ax2.legend()
+    ax2.grid(True, linestyle=':', alpha=0.7)
+
+    plt.suptitle('3D UNet Segmentation Training History', fontsize=16)
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95]) 
+    plt.savefig(save_path)
+    plt.close(fig)
+    print(f"\nTraining history plotted and saved to {save_path}")
+
     
 def train_unet_3d(model, train_loader, val_loader, epochs=50):
     return False
