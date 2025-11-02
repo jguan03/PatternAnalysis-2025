@@ -16,4 +16,32 @@ During the expansion phase in the UNet3D block, the network reconstructs the seg
 
 The improvement in our model comes from integrating residual connections. Often times, deep networks can suffer from vanishing gradients, a problem where gradients which are used for updating the network weights become extremely small when they propagate upwards. These connections act as skip routes, which allow the gradients to flow directly through the network. This overall training process enables us to successfully build and train a more complex and capable model.
 
+## 2. Dependencies and Reproducibility
+
+This project is implemented in Python and relies heavily on the PyTorch deep learning framework and complementary scientific libraries to effectively segment the required 3D medical image processing and deep learning workflows. It relies on various key packages in order to fulfil processes such as data loading, model training, pre-processing, and the overall evaluation of the model. 
+
+### Required Dependencies
+
+| Package Name | Minimum Version | Description |
+|--------------|-----------------|-------------|
+| torch | 2.0.0 | Core deep learning library |
+| torchvision | 0.15.0 | For common image/data utilities |
+| numpy | 1.23.0 | Fundamental package for scientific computing |
+| matplotlib | 3.7.0 | For visualisation and plotting results |
+| nibabel | 5.1.0 | For loading and handling NIfTI format medical images |
+| tqdm | 4.65.0 | For displaying training progress bars |
+| scipy | 1.9.0 | For 3D image resampling and scientific computing |
+
+### Reproducibility of Results
+
+To ensure the reproducibility of the reported results (specifically, DSC ≥ 0.7 for all organ classes), the following steps are critical:
+
+- **Seed Configuration**: All random seeds for NumPy, PyTorch, and Python's random module must be fixed at the start of the train.py script.
+- **Dataset Integrity**: Use the exact same version of the downsampled Prostate 3D dataset (linked in the Appendix).
+- **Model Weights**: The trained model weights (`best_unet3d_model.pth`) must be provided alongside the code as reference to check for consistency between different runs. 
+- **Device Consistency**: Training was performed on a NVIDIA A100 on a GPU using CUDA, on Google Collabs. The training time was approximately 40 - 50 minutes, however, results may vary slightly if run on a different GPU or CPU.
+- **File Pathing**: As specified previously, training was done on the Google Collabs which requires the dataset to be uploaded on Google Drives as a zip file. Prior to running the dataset.py file, a bash script was needed to unzip the file and place it in a temporary directory '/tmp/data_3d' so that the data could be processed faster. In order to recreate this process in a local directory, the file path in dataset.py should be modified to the location of the dataset (line 14): LOCAL_UNZIPPED_BASE_DIR = "/tmp/data_3d". 
+
+
+
 
