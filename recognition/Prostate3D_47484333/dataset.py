@@ -5,7 +5,7 @@ import numpy as np
 import nibabel as nib
 import random
 from torch.utils.data import Dataset, DataLoader
-from scipy.ndimage import zoom
+from scipy.ndimage import zoom, rotate 
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -82,6 +82,25 @@ def augment_volume(image_data, label_data):
         image_data = np.flip(image_data, axis=2).copy()
         label_data = np.flip(label_data, axis=2).copy()
 
+    if random.random() < 0.75: 
+        # k=1 (90 deg), k=2 (180 deg), k=3 (270 deg). k=0 is no rotation.
+        k = random.randint(1, 3) 
+        # Axes=(1, 2) specifies the YX plane for rotation.
+        image_data = np.rot90(image_data, k=k, axes=(1, 2)).copy()
+        label_data = np.rot90(label_data, k=k, axes=(1, 2)).copy()
+
+    if random.random() < 0.75:
+        # Randomly scale intensity (contrast) 
+        contrast_factor = random.uniform(0.85, 1.15) 
+        image_data = image_data * contrast_factor
+        
+        # Randomly shift intensity (brightness) 
+        brightness_factor = random.uniform(-0.1, 0.1)
+        image_data = image_data + brightness_factor
+        
+        # Re-clip to ensure image remains in the normalized range [0, 1]
+        image_data = np.clip(image_data, 0.0, 1.0)
+        
     return image_data, label_data
 
 # dataset.py - Continuing the NIFTI3DSegmentationDataset class definition
@@ -216,8 +235,9 @@ class NIFTI3DSegmentationDataset(Dataset):
 
         # Return the processed image and its corresponding label mask. 
         return image_tensor, label_tensor
-
-
-            
-
         
+if __name__ == '__main__':
+        
+    random.seed(42)
+    train_dataset = NIFTI3DSegmentationDataset(split='train')
+    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=0)

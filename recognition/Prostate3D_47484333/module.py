@@ -1,8 +1,8 @@
+%%writefile module.py 
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-# --- Helper Block: Core building block of the 3D UNet ---
 
 class ConvBlock3D(nn.Module):
     # Implements a standard 3D Convolutional Block, which is the foundational 
@@ -31,10 +31,8 @@ class ConvBlock3D(nn.Module):
 
     def forward(self, x):
         # Defines the forward computation of the ConvBlock3D.
-        # Pass the input tensor through the sequential layers
+        # Pass the input tensor through the sequential layers. 
         return self.double_conv(x)
-
-    # --- 3D UNet ---
 
 class UNet3D(nn.Module):
     """

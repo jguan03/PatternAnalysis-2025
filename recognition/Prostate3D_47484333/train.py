@@ -1,4 +1,5 @@
 %%writefile train.py
+
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -187,7 +188,7 @@ def plot_training_history(train_losses, val_losses, prostate_dice, mean_dice, sa
     print(f"\nTraining history plotted and saved to {save_path}")
 
     
-def train_unet_3d(model, train_loader, val_loader, epochs=50):
+def train_unet_3d(model, train_loader, val_loader, epochs=25):
 
     class_weights = torch.tensor([
         0.5,    # 0 - Background 
