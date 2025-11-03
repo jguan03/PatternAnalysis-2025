@@ -1,4 +1,23 @@
 %%writefile predict.py
+"""
+This 3D UNet prediction and visualisation script performs
+inference using the trained 3D UNet model
+to generate segmentation predictions. 
+
+Features:
+- Loads trained 3D U-Net model weights
+- Runs inference on medical volume data
+- Visualises central slices with predictions
+- Generates performance plots (box plots, bar charts)
+- Compares ground truth vs predicted segmentations
+
+REF:
+Google Gemini AI to assist with developing the 3D UNet task.
+
+Author: Jiaming Guan 
+Date: 03/11/2025  
+
+"""
 
 import torch
 import torch.nn.functional as F
@@ -8,8 +27,7 @@ from matplotlib.colors import ListedColormap
 import os
 import random
 
-# Import 3D components, updated to use the shorter file names
-# NOTE: This script assumes 'module.py', 'dataset.py', and 'train.py' exist in the same directory.
+# Import 3D components. 
 from module import UNet3D
 from dataset import NIFTI3DSegmentationDataset, DataLoader, NUM_CLASSES, DEVICE, TARGET_VOLUME_SIZE
 from train import dice_score_3d # Reuse the score function
@@ -17,7 +35,7 @@ from train import dice_score_3d # Reuse the score function
 # Define the file path for the best model weights
 MODEL_PATH = 'best_unet3d_model.pth'
 
-# Class index mapping for visualization labels
+# Class index mapping.
 CLASS_LABELS = [
     "Background (0)",
     "Body Outline (1)",
@@ -28,6 +46,7 @@ CLASS_LABELS = [
 ]
 
 def load_model(model_path):
+    """Load trained 3D U-Net model."""
     
     # Ensure the model architecture matches the one used in training.
     model = UNet3D(in_channels=1, out_classes=NUM_CLASSES).to(DEVICE)
@@ -36,7 +55,7 @@ def load_model(model_path):
         model.load_state_dict(torch.load(model_path, map_location=DEVICE))
         print(f"Successfully loaded 3D model weights from {model_path}.")
     else:
-        # Warn the user when the training script has not been run yet.
+        
         print(f"Warning: Model weights not found at {model_path}. Please run train.py first.")
 
     model.eval()
@@ -47,6 +66,7 @@ def visualize_inference_slice(model, data_loader, num_samples=3):
     Runs inference on random test volumes and plots a central slice (D/2)
     for visual verification.
     """
+    
     print(f"\n--- Visualizing {num_samples} Central Slices from Test Volumes ---")
 
     # Set up subplots dynamically. 
@@ -70,7 +90,7 @@ def visualize_inference_slice(model, data_loader, num_samples=3):
     random_indices = random.sample(range(dataset_size), min(num_samples, dataset_size))
     sample_data = [data_loader.dataset[i] for i in random_indices]
 
-    # Set up a discrete color map for the segmentation classes.
+    # Colour map for segmentation classes. 
     base_cmap = plt.colormaps.get_cmap('jet')
     cmap = ListedColormap(base_cmap(np.linspace(0, 1, NUM_CLASSES)))
 
@@ -81,13 +101,13 @@ def visualize_inference_slice(model, data_loader, num_samples=3):
             # Add batch dimension and move to device.
             image_input = image_volume.unsqueeze(0).to(DEVICE)
 
-            # Inference
+            # Inference. 
             output_logits = model(image_input)
 
             # Argmax for class prediction and convert to numpy.
             mask_pred_volume = torch.argmax(output_logits.squeeze(0), dim=0).cpu().numpy()
 
-            # Extract central slice (D/2) for plotting. 
+            # Get central slice. 
             D = TARGET_VOLUME_SIZE[0]
             slice_idx = D // 2
 
@@ -99,7 +119,7 @@ def visualize_inference_slice(model, data_loader, num_samples=3):
             if image_slice.max() > image_slice.min():
                 norm_image_slice = (image_slice - image_slice.min()) / (image_slice.max() - image_slice.min())
             else:
-                # All zeros if data is uniform
+                # All zeros if data is uniform. 
                 norm_image_slice = image_slice * 0 # 
 
             axes[i, 0].imshow(norm_image_slice, cmap='gray')
@@ -127,7 +147,6 @@ def visualize_inference_slice(model, data_loader, num_samples=3):
             cbar = fig.colorbar(im, ax=axes[:, 2].tolist(), ticks=np.arange(NUM_CLASSES), fraction=0.03, pad=0.04)
             cbar.ax.set_yticklabels(CLASS_LABELS)
 
-        # Tidy up the plot layout.
         fig.subplots_adjust(right=0.85, wspace=0.1)
 
     plt.show()
@@ -138,6 +157,7 @@ def calculate_all_dice_scores(model, data_loader):
     Calculates the Dice score for all classes for every volume in the data loader.
     Returns a numpy array of shape (num_volumes, NUM_CLASSES).
     """
+    
     all_scores = []
     print("\n--- Calculating Dice Scores Across Entire Test Set ---")
     model.eval()
@@ -164,10 +184,12 @@ def calculate_all_dice_scores(model, data_loader):
 
 def plot_dice_score_distribution(all_scores):
     """
-    Generates a box plot for the Dice score distribution across all test volumes for all organ classes (1-5).
+    Generates a box plot for the Dice score distribution across all 
+    test volumes for all organ classes (1-5).
     """
+    
     # The organ classes are indices 1 through 5 excluding background 0. 
-     # Select columns 1, 2, 3, 4, 5
+     # Select columns 1, 2, 3, 4, 5. 
     organ_scores = all_scores[:, 1:]
 
     # Create the box plot.
@@ -187,7 +209,7 @@ def plot_dice_score_distribution(all_scores):
     ax.set_title('Organ Segmentation Dice Score Distribution (Test Set)', fontsize=16)
     ax.set_ylabel('Dice Score', fontsize=12)
 
-    # Use the labels for the organ classes. 
+    # Set up organ labels. 
     class_labels_to_plot = CLASS_LABELS[1:]
     ax.set_xticks(np.arange(1, NUM_CLASSES)) 
     ax.set_xticklabels(class_labels_to_plot, rotation=15, ha="right")
@@ -204,8 +226,8 @@ def plot_mean_dice_scores(all_scores):
     """
     Generates a bar chart showing the mean Dice score for every class across all test volumes.
     """
+    
     print("\n--- Plotting Mean Dice Score per Class ---")
-
     # Calculate the average score for each organ. 
     mean_scores = np.mean(all_scores, axis=0)
 
@@ -241,6 +263,8 @@ def plot_mean_dice_scores(all_scores):
     print("Mean Dice score bar chart complete.")
 
 def main():
+    """Run prediction pipeline."""
+    
     # Load the Test Data Loader.
     try:
         # Load the test dataset. 

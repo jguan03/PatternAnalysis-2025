@@ -1,4 +1,25 @@
 %%writefile train.py
+"""
+3D U-Net Training Script for Medical Image Segmentation
+
+Trains the 3D UNet model on the 3D prostate data with weighted Dice loss,
+validation monitoring, and early stopping when target Dice is achieved.
+
+Features:
+- Weighted Dice loss for class imbalance
+- Multi-organ Dice scoring 
+- Learning rate scheduling
+- Training history visualisation
+
+Usage:
+    python train.py
+
+REF:
+Google Gemini AI to assist with developing the 3D UNet task. 
+
+Author: Jiaming Guan 
+Date 03/11/2025
+"""
 
 import torch
 import torch.nn as nn
@@ -12,7 +33,7 @@ import random
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 
-# Import 3D components
+# Import 3D components from module.py and dataset.py. 
 from module import UNet3D
 from dataset import NIFTI3DSegmentationDataset, BATCH_SIZE, NUM_CLASSES, DEVICE, LR
 
@@ -20,18 +41,19 @@ from dataset import NIFTI3DSegmentationDataset, BATCH_SIZE, NUM_CLASSES, DEVICE,
 MODEL_PATH = 'best_unet3d_model.pth'
 PLOT_PATH = 'training_history.png'
 
-# Define the prostate label index globally. (Still useful for reference, but min organ dice is now the target)
+# Define the prostate label index globally. 
 PROSTATE_LABEL_IDX = 5
 
 def dice_score_3d(prediction, target, smooth=1e-6):
-
-    # If the input is raw model output convert it to discrete class predictions.
+    """Calculate 3D Dice scores for all classes."""
+    
+    # Convert logits to class predictions if needed. 
     if prediction.ndim == 5:
 
         # (N, C, D, H, W) to (N, D, H, W)
         prediction = torch.argmax(prediction, dim=1)
 
-    # Flatten the 3D dimensions (D, H, W) into a single vector for easier per-voxel calculation.
+    # Flatten 3D volumes for per-voxel calculation. 
     prediction = prediction.contiguous().view(-1)
     target = target.contiguous().view(-1)
 
@@ -40,6 +62,7 @@ def dice_score_3d(prediction, target, smooth=1e-6):
 
     # Loop through all of the different classes:
     for c in range(NUM_CLASSES):
+        
         # Create simple boolean masks for the current class.
         pred_c = (prediction == c)
         target_c = (target == c)
@@ -58,42 +81,47 @@ def dice_score_3d(prediction, target, smooth=1e-6):
     return dice_scores
 
 class WeightedDiceLoss3D(nn.Module):
-
+    """3D Dice loss with class weighting for imbalanced segmentation."""
+    
     def __init__(self, num_classes, weights):
+        """
+        Args:
+            num_classes: Number of segmentation classes
+            weights: Tensor of weights for each class
+        """
         super(WeightedDiceLoss3D, self).__init__()
         self.num_classes = num_classes
         self.weights = weights
 
     def forward(self, prediction, target, smooth=1e-6):
-        # Convert raw output logits into probabilities using Softmax.
+        # Convert logits to probabilities. 
         probs = F.softmax(prediction, dim=1)
 
         # Convert the ground truth mask into a one-hot vector format for comparison
         # using one-hot encoding.
         target_one_hot = F.one_hot(target, num_classes=self.num_classes).permute(0, 4, 1, 2, 3).float()
 
-        # Reshape the data to combine the D, H, and W dimensions into a single voxel dimension.
+        # Flatten spatial dimensions. 
         probs_flat = probs.contiguous().view(probs.shape[0], self.num_classes, -1)
         target_flat = target_one_hot.contiguous().view(target_one_hot.shape[0], self.num_classes, -1)
 
-          # Calculate the intersection and the total sum of volumes per class per batch item.
+        # Calculate the intersection and the total sum of volumes per class per batch item.
         intersection = (probs_flat * target_flat).sum(dim=2)
         sets_sum = probs_flat.sum(dim=2) + target_flat.sum(dim=2)
 
         # Compute the dice score.
         dice = (2. * intersection + smooth) / (sets_sum + smooth)
 
-        # Compute the dice loss.
+        # Apply class weights to losses to improve 
+        # training. 
         class_losses = 1.0 - dice
-
-        # Apply the pre-defined weights.
         weighted_loss = class_losses * self.weights
 
-        # Return the average loss across all classes and items in the batch.
         return weighted_loss.mean()
 
 def run_epoch(model, data_loader, optimizer, is_training=True, loss_fn=None):
-
+    """Run one training or validation epoch."""
+    
     # training uses model.train()
     # validation uses model.eval()
     model.train() if is_training else model.eval()
@@ -105,6 +133,7 @@ def run_epoch(model, data_loader, optimizer, is_training=True, loss_fn=None):
     progress_bar = tqdm(data_loader, desc=f"Epoch {'Train' if is_training else 'Valid'}", leave=False)
 
     for images, masks_gt in progress_bar:
+        
         # Move the data to the GPU (if available).
         images, masks_gt = images.to(DEVICE), masks_gt.to(DEVICE)
 
@@ -112,38 +141,36 @@ def run_epoch(model, data_loader, optimizer, is_training=True, loss_fn=None):
             # Zero the gradients before the forward pass.
             optimizer.zero_grad()
 
-        # Pass the images through the UNet to get logits.
+        # Forward pass
         output_logits = model(images)
 
         # Calculate loss and add it to the total loss.
         loss = loss_fn(output_logits, masks_gt)
         total_loss += loss.item()
 
-        # Backpropagation and optimisation during training.
+        # Backwards pass for training. 
         if is_training:
             loss.backward()
             if optimizer:
                 optimizer.step()
 
-        # Check the current performance of the training during the training process.
+        # Check the metrics. 
         with torch.no_grad():
 
             # Retrieve dice score from every class in the batch.
             dice = dice_score_3d(output_logits, masks_gt, smooth=1e-6)
 
-            # Calculate metrics for logging
-            organ_dice_scores = np.array(dice[1:]) # Indices 1-5 (Organs)
+            # Calculate metrics for logging. 
+            organ_dice_scores = np.array(dice[1:]) 
             current_mean_organ_dice = np.mean(organ_dice_scores) if organ_dice_scores.size > 0 else 0.0
             current_min_organ_dice = np.min(organ_dice_scores) if organ_dice_scores.size > 0 else 0.0
-            # NEW: Extract the Dice score for the Prostate class (index 5)
             prostate_dice = dice[PROSTATE_LABEL_IDX] if len(dice) > PROSTATE_LABEL_IDX else 0.0
 
             # If validating, collect all class Dice scores.
             if not is_training:
                 all_dice_scores.append(dice)
 
-            # Update progress to display current metrics.
-            # Showing individual organ dice scores instead of aggregate metrics in the progress bar.
+            # Update organ progress metrics. 
             progress_bar.set_postfix(
                 Loss=f'{loss.item():.4f}',
                 BodyDice=f'{dice[1]:.4f}',
@@ -155,12 +182,11 @@ def run_epoch(model, data_loader, optimizer, is_training=True, loss_fn=None):
 
     # Calculate average loss for the epoch.
     avg_loss = total_loss / len(data_loader)
-
-    # Calculate mean Dice scores across all validation batches.
+    
     avg_dice = None
     if not is_training and all_dice_scores:
 
-        # Average the collected scores over the entire validation set.
+        # Average the scores across the organs. 
         avg_dice = np.mean(all_dice_scores, axis=0)
 
 
@@ -170,7 +196,7 @@ def plot_training_history(train_losses, val_losses, all_class_dice_history, mean
     """Generates and saves a two-panel plot of training history,
     displaying loss and individual Dice scores for all organs."""
 
-    # Class names for legend (excluding background, index 0)
+    # Class names for legend excluding background. 
     class_names = {
         1: 'Body',
         2: 'Bone',
@@ -179,7 +205,7 @@ def plot_training_history(train_losses, val_losses, all_class_dice_history, mean
         5: 'Prostate'
     }
 
-    # Convert list of arrays to a 2D array (Epochs x Classes)
+    # Convert list of arrays to a 2D array. 
     dice_history_array = np.array(all_class_dice_history)
 
     epochs = range(1, len(train_losses) + 1)
@@ -187,7 +213,7 @@ def plot_training_history(train_losses, val_losses, all_class_dice_history, mean
     plt.style.use('ggplot')
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
 
-    # Plot 1: Loss History
+    # Loss plot history.
     ax1.plot(epochs, train_losses, label='Train Loss', color='blue', marker='o', linestyle='--')
     ax1.plot(epochs, val_losses, label='Validation Loss', color='red', marker='o')
     ax1.set_title('Loss History Over Epochs')
@@ -196,10 +222,10 @@ def plot_training_history(train_losses, val_losses, all_class_dice_history, mean
     ax1.legend()
     ax1.grid(True, linestyle=':', alpha=0.7)
 
-    # Plot 2: Dice Score History (Updated to include all organ classes)
+    # Dice score history. 
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b'] # Distinct colors
 
-    # Loop through classes 1 to 5 (organs) and plot their history
+    # Loop through classes 1 to 5 (organs) and plot their history. 
     for class_idx in range(1, NUM_CLASSES):
         label = class_names.get(class_idx, f'Class {class_idx}')
         # Plot the column corresponding to the class index
@@ -208,7 +234,7 @@ def plot_training_history(train_losses, val_losses, all_class_dice_history, mean
                  color=colors[class_idx],
                  linestyle='-')
 
-    # Plot Mean Organ Dice (using the provided mean scores)
+    # Plot Mean Organ Dices. 
     ax2.plot(epochs, mean_dice_scores,
              label='Mean Organ Dice (1-5)',
              color='black',
@@ -223,7 +249,6 @@ def plot_training_history(train_losses, val_losses, all_class_dice_history, mean
     ax2.grid(True, linestyle=':', alpha=0.7)
     ax2.set_ylim(0, 1.05) # Ensure y-axis is suitable for Dice scores (0 to 1)
 
-
     plt.suptitle('3D UNet Segmentation Training History', fontsize=16)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     plt.savefig(save_path)
@@ -232,13 +257,15 @@ def plot_training_history(train_losses, val_losses, all_class_dice_history, mean
 
 
 def train_unet_3d(model, train_loader, val_loader, epochs=20):
-
+    """Train 3D U-Net with early stopping when the DSC score
+    of 0.7 is met."""
+    
     class_weights = torch.tensor([
         0.5,     # 0 - Background
         1.0,     # 1 - Body
         3.0,     # 2 - Bone
         7.0,     # 3 - Bladder
-        7.0,    # 4 - Rectum
+        7.0,     # 4 - Rectum
         10.0     # 5 - Prostate
     ], dtype=torch.float32).to(DEVICE)
 
@@ -257,26 +284,22 @@ def train_unet_3d(model, train_loader, val_loader, epochs=20):
     )
 
     TARGET_DICE = 0.70
-
-    # CHANGE: Track the minimum Dice score across all organs (1-5) for model saving.
     best_min_organ_dice = -1.0
 
-    # History tracking lists
+    # History tracking lists. 
     train_losses = []
-    val_losses = [].
+    val_losses = []
     all_val_dice_history = []
     mean_organ_dice_scores = []
 
     print("\nStarting 3D UNet Training...")
-    # Main training loop iterating over the specified number of epochs. 
-    # In this case, the number of epochs specified is 20.
+    # Training epoch loop (20 epochs). 
     for epoch in range(1, epochs + 1):
 
-        # Perform forward pass, loss calculation, backpropagation, and weight update when
-        # training one epoch.
+        # Training epoch. 
         train_loss, _ = run_epoch(model, train_loader, optimizer, is_training=True, loss_fn=loss_fn)
 
-        # Evaluates performance on unseen data without updating weights.
+        # Validation epoch. 
         with torch.no_grad():
             val_loss, val_dice_scores = run_epoch(model, val_loader, None, is_training=False, loss_fn=loss_fn)
 
@@ -291,6 +314,7 @@ def train_unet_3d(model, train_loader, val_loader, epochs=20):
         is_new_best = current_min_organ_dice > best_min_organ_dice
         if is_new_best:
             best_min_organ_dice = current_min_organ_dice
+            
             # Save weights if validation improves. 
             torch.save(model.state_dict(), MODEL_PATH)
 
@@ -315,6 +339,7 @@ def train_unet_3d(model, train_loader, val_loader, epochs=20):
 
         if target_achieved:
             print(f"\nTarget achieved! All organ Dice scores are >= {TARGET_DICE:.2f}. Stopping training.")
+            
             # Plot before stopping.
             plot_training_history(train_losses, val_losses, all_val_dice_history, mean_organ_dice_scores, PLOT_PATH)
             return True
@@ -326,7 +351,8 @@ def train_unet_3d(model, train_loader, val_loader, epochs=20):
 
 
 def main():
-
+    """Main training pipeline."""
+    
     random.seed(42)
     torch.manual_seed(42)
 
@@ -355,7 +381,7 @@ def main():
     train_unet_3d(model, train_loader, val_loader)
     print("\nTraining complete.")
 
-    # Final Test Set Evaluation
+    # Final Test Set Evaluation. 
     print("\n--- Final Test Set Evaluation ---")
 
     # Check if the saved best model file exists before proceeding.
@@ -365,13 +391,9 @@ def main():
         # Load the model state dictionary from the best epoch.
         model.load_state_dict(torch.load(MODEL_PATH, map_location=DEVICE))
 
-        # Create a tensor of ones to represent equal weights for all classes.
+        # Use unweighted loss for final evaluation. 
         unweighted_dice_loss_fn = WeightedDiceLoss3D(num_classes=NUM_CLASSES, weights=torch.ones(NUM_CLASSES).to(DEVICE))
-
-        # Run a single evaluation epoch on the test data.
         test_loss, test_dice_scores = run_epoch(model, test_loader, None, is_training=False, loss_fn=unweighted_dice_loss_fn)
-
-        # Extract the Dice score for all of the organs. 
         final_organ_dice_scores = np.array(test_dice_scores[1:])
         final_min_organ_dice = np.min(final_organ_dice_scores)
 
@@ -384,18 +406,18 @@ def main():
         # Handle when models are not saved.
         print("Cannot run final test: Best model weights not saved.")
 
-    # Displays the training history plot
+    # Displays the training history plot. 
     print("\nAttempting to display training history plot...")
     if os.path.exists(PLOT_PATH):
         try:
-            # Load the image data
+            # Load the image data. 
             img = mpimg.imread(PLOT_PATH)
 
-            # Create a figure to display the image
+            # Create a figure to display the image. 
             plt.figure(figsize=(10, 6))
             plt.title("Training History Plot")
 
-            # Display the image
+            # Display the image. 
             plt.imshow(img)
             plt.axis('off')
             plt.show()
